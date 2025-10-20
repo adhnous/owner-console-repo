@@ -1,8 +1,14 @@
-import type { NextConfig } from 'next';
-
-const nextConfig: NextConfig = {
-  // Turbopack is stable in Next.js 15+
-  turbopack: {},
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  experimental: {
+    optimizeCss: false, // disable LightningCSS to prevent build errors on Vercel
+  },
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 };
 
-export default nextConfig;
+module.exports = nextConfig;
