@@ -69,7 +69,7 @@ export async function POST(req: Request) {
     const authz = await requireOwnerOrAdmin(req);
     if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.code });
 
-    const { db, admin } = await getAdmin();
+    const { db, FieldValue } = await getAdmin();
     const settingsRef = db.collection('settings').doc('features');
 
     const body = await req.json().catch(() => ({} as any));
@@ -138,7 +138,7 @@ export async function POST(req: Request) {
           batch.update(d.ref, {
             status: 'approved',
             demotedForLock: null,
-            approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+            approvedAt: FieldValue.serverTimestamp(),
             approvedBy: authz.uid,
           });
           ops++;
