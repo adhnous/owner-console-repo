@@ -1,31 +1,29 @@
-import admin from "firebase-admin";
+import { getAdmin } from '@/lib/firebase-admin';
 
-let app: admin.app.App;
-
-// Initialize only once (for hot reloads / serverless)
-if (!admin.apps.length) {
-  app = admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-    }),
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  });
-} else {
-  app = admin.app();
-}
-
-/**
- * Provides initialized Firebase Admin SDK components.
- * Ensures single instance in serverless environments.
- */
-export async function getAdmin() {
-  const db = admin.firestore();
-  const auth = admin.auth();
-  const bucket = admin.storage().bucket();
-  const FieldValue = admin.firestore.FieldValue;
-
-  // ✅ Added `admin` for API routes that need admin.firestore.FieldValue
-  return { db, auth, FieldValue, bucket, admin };
-}
+export const requireOwnerOrAdmin = async (req: Request) => {
+  const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
+  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+    return { ok: false, code: 401 as const, error: 'missing_token' };
+  }
+  const token = authHeader.slice(7);
+  const { auth, db } = await getAdmin();
+  // Step 1: verify token
+  let decoded: any;
+  try {
+    decoded = await auth.verifyIdToken(token);
+  } catch (e) {
+    return { ok: false as const, code: 401 as const, error: 'invalid_token' };
+  }
+  const uid = decoded.uid as string;
+  // Step 2: check role
+  try {
+    const snap = await db.collection('users').doc(uid).get();
+    const role = (snap.exists ? (snap.get('role') as string) : null) || null;
+    if (role === 'owner' || role === 'admin') {
+      return { ok: true as const, uid, role };
+    }
+    return { ok: false as const, code: 403 as const, error: 'forbidden' };
+  } catch (e: any) {
+    return { ok: false as const, code: 500 as const, error: 'role_lookup_failed' };
+  }
+};
