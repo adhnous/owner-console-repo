@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   const authz = await requireOwnerOrAdmin(req);
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.code });
 
-  const { db } = await getAdmin();
+  const { db, auth } = await getAdmin();
   const body = await req.json().catch(() => ({}));
   const uid = (body?.uid || '').trim();
   const email = (body?.email || '').trim();
@@ -31,6 +31,20 @@ export async function POST(req: Request) {
 
     const data = docSnap.data() || {};
     const createdAtISO = data.createdAt?._seconds ? new Date(data.createdAt._seconds * 1000).toISOString() : null;
+    // Try to read email verification from Firebase Auth user record
+    let emailVerified: boolean | null = null;
+    try {
+      let authRec: any = null;
+      try {
+        authRec = await auth.getUser(docSnap.id);
+      } catch (e) {
+        const lookupEmail = (data.email || email || '').trim();
+        if (lookupEmail) {
+          try { authRec = await auth.getUserByEmail(lookupEmail); } catch {}
+        }
+      }
+      if (authRec) emailVerified = !!authRec.emailVerified;
+    } catch {}
     const out = {
       uid: docSnap.id,
       email: data.email || null,
@@ -40,6 +54,7 @@ export async function POST(req: Request) {
       status: data.status || 'active',
       createdAt: createdAtISO,
       pricingGate: data.pricingGate || null,
+      emailVerified,
     };
     return NextResponse.json({ user: out });
   } catch (e: any) {

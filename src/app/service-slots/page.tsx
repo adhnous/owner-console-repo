@@ -60,7 +60,7 @@ export default function ServiceSlotsPage() {
 
       <div className="oc-card" style={{ marginBottom: 12 }}>
         <h3 className="oc-title" style={{ marginBottom: 8 }}>Filters</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr 1.5fr 180px auto', gap: 12 }}>
           <div>
             <label className="oc-label">Status</label>
             <select className="oc-input" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -100,35 +100,45 @@ export default function ServiceSlotsPage() {
         ) : rows.length === 0 ? (
           <div className="oc-card">No requests.</div>
         ) : (
-          rows.map((r) => (
-            <div key={r.id} className="oc-card oc-row">
-              <div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
-                  <h3 className="oc-title" title={r.id}>{r.email || r.uid}</h3>
-                  <span className={`oc-badge ${r.status}`}>{r.status}</span>
-                </div>
-                <div className="oc-meta">
-                  <span className="oc-subtle">UID: {r.uid}</span>
-                  <span className="oc-subtle">Created: {r.createdAt || '-'}</span>
-                  {r.approvedAt && <span className="oc-subtle">Approved: {r.approvedAt}</span>}
-                  {r.consumed && <span className="oc-subtle">Consumed</span>}
-                  {r.paid && <span className="oc-subtle">Paid</span>}
-                </div>
-                <div className="oc-meta" style={{ marginTop: 6 }}>
-                  <span className="oc-subtle">Notes: {r.notes || '-'}</span>
+          rows.map((r) => {
+            const fmt = (iso: string | null) => {
+              if (!iso) return '-';
+              const d = new Date(iso);
+              if (isNaN(d.getTime())) return iso;
+              return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            };
+            return (
+              <div key={r.id} className="oc-card">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <h3 className="oc-title" title={r.id}>{r.email || r.uid}</h3>
+                      <span className={`oc-badge ${r.status}`}>{r.status}</span>
+                    </div>
+                    <div className="oc-meta" style={{ marginTop: 6 }}>
+                      <span className="oc-subtle">UID: {r.uid}</span>
+                      <span className="oc-subtle">Created: {fmt(r.createdAt)}</span>
+                      {r.approvedAt && <span className="oc-subtle">Approved: {fmt(r.approvedAt)}</span>}
+                      {r.consumed && <span className="oc-subtle">Consumed</span>}
+                      {r.paid && <span className="oc-subtle">Paid</span>}
+                    </div>
+                    <div className="oc-meta" style={{ marginTop: 6 }}>
+                      <span className="oc-subtle">Notes: {r.notes || '-'}</span>
+                    </div>
+                  </div>
+                  <div className="oc-actions">
+                    {r.status !== 'approved' && (
+                      <button className="oc-btn oc-btn-green" onClick={() => update(r.id, { status: 'approved' })}>Approve</button>
+                    )}
+                    {r.status !== 'rejected' && (
+                      <button className="oc-btn oc-btn-red" onClick={() => update(r.id, { status: 'rejected' })}>Reject</button>
+                    )}
+                    <button className="oc-btn" onClick={() => update(r.id, { paid: !r.paid })}>{r.paid ? 'Mark Unpaid' : 'Mark Paid'}</button>
+                  </div>
                 </div>
               </div>
-              <div className="oc-actions">
-                {r.status !== 'approved' && (
-                  <button className="oc-btn oc-btn-green" onClick={() => update(r.id, { status: 'approved' })}>Approve</button>
-                )}
-                {r.status !== 'rejected' && (
-                  <button className="oc-btn oc-btn-red" onClick={() => update(r.id, { status: 'rejected' })}>Reject</button>
-                )}
-                <button className="oc-btn" onClick={() => update(r.id, { paid: !r.paid })}>{r.paid ? 'Mark Unpaid' : 'Mark Paid'}</button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
