@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { getIdTokenOrThrow } from "@/lib/auth-client";
 
 type Features = {
@@ -12,6 +12,32 @@ type Features = {
   lockProvidersToPricing: boolean;
   lockSeekersToPricing: boolean;
 };
+
+type FeaturesResponse = { features?: Partial<Features>; error?: string };
+
+function sanitizeFeatures(input: Partial<Features>): Features {
+  const def: Features = {
+    pricingEnabled: true,
+    showForProviders: false,
+    showForSeekers: false,
+    enforceAfterMonths: 3,
+    lockAllToPricing: false,
+    lockProvidersToPricing: false,
+    lockSeekersToPricing: false,
+  };
+  const n = Number(input.enforceAfterMonths);
+  const months = Number.isFinite(n) ? Math.min(12, Math.max(0, Math.floor(n))) : def.enforceAfterMonths;
+
+  return {
+    pricingEnabled: input.pricingEnabled ?? def.pricingEnabled,
+    showForProviders: input.showForProviders ?? def.showForProviders,
+    showForSeekers: input.showForSeekers ?? def.showForSeekers,
+    enforceAfterMonths: months,
+    lockAllToPricing: input.lockAllToPricing ?? def.lockAllToPricing,
+    lockProvidersToPricing: input.lockProvidersToPricing ?? def.lockProvidersToPricing,
+    lockSeekersToPricing: input.lockSeekersToPricing ?? def.lockSeekersToPricing,
+  };
+}
 
 export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
@@ -39,65 +65,132 @@ export default function SettingsPage() {
     if (f.lockSeekersToPricing !== undefined) setLockSeekersToPricing(!!f.lockSeekersToPricing);
   };
 
+  // Abortable load for React 18 double-mount and unmount safety
+  const abortRef = useRef<AbortController | null>(null);
+
   async function load() {
     setLoading(true); setError(null); setOkMsg(null);
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     try {
       const token = await getIdTokenOrThrow();
       const res = await fetch('/api/settings/features', {
         headers: { Authorization: `Bearer ${token}` },
-        cache: 'no-store'
+        cache: 'no-store',
+        signal: ac.signal,
       });
-      const json = await res.json();
+      const json: FeaturesResponse = await res.json().catch(() => ({} as any));
+      if (res.status === 401 || res.status === 403) throw new Error('Unauthorized: please sign in again.');
       if (!res.ok) throw new Error(json?.error || res.statusText);
-      applyFeatures(json.features || {});
+      applyFeatures(sanitizeFeatures(json.features ?? {}));
     } catch (e: any) {
-      const msg = e?.message || 'Failed to load settings';
-      setError(msg);
-      // Optional: if unauthorized, redirect to login
-      // if (/unauthorized|forbidden|401|403/i.test(msg)) router.replace('/login');
+      if (e?.name !== 'AbortError') setError(e?.message || 'Failed to load settings');
     } finally {
-      setLoading(false);
+      if (!ac.signal.aborted) setLoading(false);
     }
   }
 
+  useEffect(() => {
+    load();
+    return () => abortRef.current?.abort();
+  }, []);
+
+  // Dirty tracking + optimistic save with rollback
+  const snapshotRef = useRef<Features | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  const current: Features = {
+    pricingEnabled,
+    showForProviders,
+    showForSeekers,
+    enforceAfterMonths,
+    lockAllToPricing,
+    lockProvidersToPricing,
+    lockSeekersToPricing,
+  };
+
+  // When load finishes, freeze a snapshot
+  useEffect(() => {
+    if (!loading) {
+      snapshotRef.current = current;
+      setIsDirty(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // Compare against snapshot for "dirty"
+  useEffect(() => {
+    const s = snapshotRef.current;
+    if (!s) return;
+    setIsDirty(
+      s.pricingEnabled !== pricingEnabled ||
+      s.showForProviders !== showForProviders ||
+      s.showForSeekers !== showForSeekers ||
+      s.enforceAfterMonths !== enforceAfterMonths ||
+      s.lockAllToPricing !== lockAllToPricing ||
+      s.lockProvidersToPricing !== lockProvidersToPricing ||
+      s.lockSeekersToPricing !== lockSeekersToPricing
+    );
+  }, [
+    pricingEnabled,
+    showForProviders,
+    showForSeekers,
+    enforceAfterMonths,
+    lockAllToPricing,
+    lockProvidersToPricing,
+    lockSeekersToPricing
+  ]);
+
   async function save() {
+    if (saving || !isDirty) return;
     setSaving(true); setError(null); setOkMsg(null);
+
+    const before = snapshotRef.current!;
+    snapshotRef.current = current;
+
     try {
       const token = await getIdTokenOrThrow();
-      const body: Features = {
-        pricingEnabled,
-        showForProviders,
-        showForSeekers,
-        enforceAfterMonths,
-        lockAllToPricing,
-        lockProvidersToPricing,
-        lockSeekersToPricing,
-      };
+      const body = sanitizeFeatures(current);
       const res = await fetch('/api/settings/features', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
       });
-      const json = await res.json();
+      const json: FeaturesResponse = await res.json().catch(() => ({} as any));
+      if (res.status === 401 || res.status === 403) throw new Error('Unauthorized: please sign in again.');
       if (!res.ok) throw new Error(json?.error || res.statusText);
+
       setOkMsg('Settings saved successfully.');
+      snapshotRef.current = body;
+      setIsDirty(false);
     } catch (e: any) {
+      // rollback to previous snapshot
+      applyFeatures(before);
+      snapshotRef.current = before;
       setError(e?.message || 'Failed to save settings');
     } finally {
       setSaving(false);
     }
   }
 
-  // cascade: lockAll → lock providers & seekers
+  // cascade: lockAll → lock providers & seekers, and remember previous granular states
+  const lastGranularRef = useRef({ providers: false, seekers: false });
+
   const onToggleLockAll = (checked: boolean) => {
     setLockAllToPricing(checked);
     if (checked) {
+      lastGranularRef.current = { providers: lockProvidersToPricing, seekers: lockSeekersToPricing };
       setLockProvidersToPricing(true);
       setLockSeekersToPricing(true);
+    } else {
+      setLockProvidersToPricing(lastGranularRef.current.providers);
+      setLockSeekersToPricing(lastGranularRef.current.seekers);
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, []); // initial load (kept from original; safe duplicate call)
 
   const disabled = saving || !pricingEnabled;
 
@@ -116,19 +209,32 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-sm border border-gray-100 mb-6">
-            <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-3">Feature Settings</h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Configure pricing features and access controls for your platform
-          </p>
+        {/* Live region for screen readers */}
+        <div className="sr-only" aria-live="polite" aria-atomic="true">
+          {saving ? 'Saving settings' : okMsg ? okMsg : error ? `Error: ${error}` : ''}
         </div>
+
+   {/* Header */}
+<div className="text-center mb-12">
+  <div className="not-prose inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-sm border border-gray-100 mb-6">
+    <svg
+      width="32"
+      height="32"
+      className="w-8 h-8 shrink-0 flex-none text-blue-600"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  </div>
+  <h1 className="text-4xl font-bold text-gray-900 mb-3">Feature Settings</h1>
+  <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+    Configure pricing features and access controls for your platform
+  </p>
+</div>
 
         {/* Messages */}
         {error && (
@@ -166,7 +272,7 @@ export default function SettingsPage() {
               <div className="mt-8 pt-6 border-t border-gray-200">
                 <button
                   onClick={save}
-                  disabled={saving}
+                  disabled={saving || !isDirty}
                   className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-semibold rounded-xl shadow-sm text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                 >
                   {saving ? (
@@ -203,7 +309,9 @@ export default function SettingsPage() {
                   <div className="flex-shrink-0 ml-6">
                     <button
                       onClick={() => setPricingEnabled(!pricingEnabled)}
-                      aria-pressed={pricingEnabled}
+                      role="switch"
+                      aria-checked={pricingEnabled}
+                      aria-label="Enable pricing features"
                       className={`relative inline-flex h-8 w-14 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${pricingEnabled ? 'bg-blue-600' : 'bg-gray-300'}`}
                     >
                       <span className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition ${pricingEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
@@ -320,7 +428,9 @@ export default function SettingsPage() {
                       type="number"
                       min={0}
                       value={enforceAfterMonths}
-                      onChange={(e) => setEnforceAfterMonths(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                      onChange={(e) =>
+                        setEnforceAfterMonths(Math.max(0, Math.min(12, Math.floor(Number(e.target.value) || 0))))
+                      }
                       disabled={disabled}
                       className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-center text-sm font-medium text-gray-900 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
                     />
