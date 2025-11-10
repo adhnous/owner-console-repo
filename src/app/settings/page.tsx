@@ -11,6 +11,7 @@ type Features = {
   lockAllToPricing: boolean;
   lockProvidersToPricing: boolean;
   lockSeekersToPricing: boolean;
+  showCityViews: boolean;
 };
 
 type FeaturesResponse = { features?: Partial<Features>; error?: string };
@@ -24,6 +25,7 @@ function sanitizeFeatures(input: Partial<Features> | undefined): Features {
     lockAllToPricing: false,
     lockProvidersToPricing: false,
     lockSeekersToPricing: false,
+    showCityViews: true,
   };
 
   const src = input || {};
@@ -58,6 +60,8 @@ function sanitizeFeatures(input: Partial<Features> | undefined): Features {
       src.lockSeekersToPricing !== undefined
         ? !!src.lockSeekersToPricing
         : def.lockSeekersToPricing,
+    showCityViews:
+      src.showCityViews !== undefined ? !!src.showCityViews : def.showCityViews,
   };
 }
 
@@ -78,6 +82,7 @@ export default function SettingsPage() {
     useState<boolean>(false);
   const [lockSeekersToPricing, setLockSeekersToPricing] =
     useState<boolean>(false);
+  const [showCityViews, setShowCityViews] = useState<boolean>(true);
 
   // Abortable load
   const abortRef = useRef<AbortController | null>(null);
@@ -102,6 +107,8 @@ export default function SettingsPage() {
       setLockProvidersToPricing(!!f.lockProvidersToPricing);
     if (f.lockSeekersToPricing !== undefined)
       setLockSeekersToPricing(!!f.lockSeekersToPricing);
+    if (f.showCityViews !== undefined)
+      setShowCityViews(!!f.showCityViews);
   };
 
   async function load() {
@@ -167,6 +174,7 @@ export default function SettingsPage() {
     lockAllToPricing,
     lockProvidersToPricing,
     lockSeekersToPricing,
+    showCityViews,
   };
 
   // When load finishes, freeze snapshot
@@ -190,7 +198,8 @@ export default function SettingsPage() {
       s.enforceAfterMonths !== enforceAfterMonths ||
       s.lockAllToPricing !== lockAllToPricing ||
       s.lockProvidersToPricing !== lockProvidersToPricing ||
-      s.lockSeekersToPricing !== lockSeekersToPricing;
+      s.lockSeekersToPricing !== lockSeekersToPricing ||
+      s.showCityViews !== showCityViews;
 
     setIsDirty(dirty);
   }, [
@@ -201,6 +210,7 @@ export default function SettingsPage() {
     lockAllToPricing,
     lockProvidersToPricing,
     lockSeekersToPricing,
+    showCityViews,
   ]);
 
   async function save() {
@@ -409,6 +419,15 @@ export default function SettingsPage() {
                 setShowForSeekers(e.target.checked)
               }
               disabled={disabled}
+            />
+          </div>
+          <div className="oc-field">
+            <label className="oc-label">Show City Views page</label>
+            <input
+              type="checkbox"
+              className="oc-switch"
+              checked={showCityViews}
+              onChange={(e) => setShowCityViews(e.target.checked)}
             />
           </div>
         </div>

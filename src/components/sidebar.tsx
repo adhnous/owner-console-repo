@@ -24,7 +24,9 @@ export default function Sidebar() {
         <Link href="/ads" className={`oc-navlink ${isActive('/ads')}`}>Ads Manager</Link>
         <Link href="/transactions" className={`oc-navlink ${isActive('/transactions')}`}>Transactions</Link>
         <Link href="/settings" className={`oc-navlink ${isActive('/settings')}`}>Settings</Link>
+        <Link href="/settings/featured-videos" className={`oc-navlink ${isActive('/settings/featured-videos')}`}>Featured Videos</Link>
       </nav>
     </aside>
   );
 }
+

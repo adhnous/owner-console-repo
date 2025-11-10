@@ -13,6 +13,7 @@ const DEFAULTS = {
   lockAllToPricing: false,
   lockProvidersToPricing: false,
   lockSeekersToPricing: false,
+  showCityViews: true,
 };
 
 // Reused pagination worker (handles > N docs)
@@ -55,6 +56,7 @@ export async function GET(req: Request) {
       lockAllToPricing: !!data.lockAllToPricing,
       lockProvidersToPricing: !!data.lockProvidersToPricing,
       lockSeekersToPricing: !!data.lockSeekersToPricing,
+      showCityViews: typeof data.showCityViews === 'boolean' ? data.showCityViews : DEFAULTS.showCityViews,
     };
 
     return NextResponse.json({ features: out });
@@ -86,6 +88,7 @@ export async function POST(req: Request) {
       lockAllToPricing: !!body.lockAllToPricing,
       lockProvidersToPricing: !!body.lockProvidersToPricing,
       lockSeekersToPricing: !!body.lockSeekersToPricing,
+      showCityViews: body.showCityViews === undefined ? DEFAULTS.showCityViews : !!body.showCityViews,
     };
 
     // Read previous to detect transitions
