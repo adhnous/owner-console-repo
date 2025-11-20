@@ -1,0 +1,45 @@
+<<<<<<< HEAD
+﻿node_modules/
+.next/
+out/
+dist/
+.env
+.env.*
+.DS_Store
+*.log
+.vercel/
+coverage/
+=======
+# Dependencies
+node_modules/
+
+# Build and logs
+.next/
+dist/
+out/
+build/
+.vercel/
+.firebase/
+.cache/
+coverage/
+*.log
+
+# OS & Editor junk
+.DS_Store
+Thumbs.db
+*.swp
+
+# Archives / large files
+*.zip
+*.tar
+*.rar
+*.7z
+*.mp4
+*.avi
+*.exe
+*.iso
+
+# Env files
+.env
+.env.local
+>>>>>>> origin/main
