@@ -20,6 +20,7 @@ type Row = {
 
 type FilterType = '' | 'exam' | 'assignment' | 'notes' | 'report' | 'book' | 'other';
 type FilterLanguage = '' | 'ar' | 'en' | 'both';
+type FilterStatus = '' | 'pending' | 'approved' | 'rejected';
 
 export default function StudentBankAdminPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -29,6 +30,7 @@ export default function StudentBankAdminPage() {
   const [q, setQ] = useState('');
   const [type, setType] = useState<FilterType>('');
   const [language, setLanguage] = useState<FilterLanguage>('');
+  const [status, setStatusFilter] = useState<FilterStatus>('');
 
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -37,9 +39,10 @@ export default function StudentBankAdminPage() {
     if (q) p.set('q', q.trim());
     if (type) p.set('type', type);
     if (language) p.set('language', language);
+    if (status) p.set('status', status);
     p.set('limit', '200');
     return p.toString();
-  }, [q, type, language]);
+  }, [q, type, language, status]);
 
   async function load() {
     setLoading(true);
@@ -169,7 +172,7 @@ export default function StudentBankAdminPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '2fr 1fr 1fr auto',
+            gridTemplateColumns: '2fr 1fr 1fr 1fr auto',
             gap: 12,
             alignItems: 'center',
           }}
@@ -210,6 +213,19 @@ export default function StudentBankAdminPage() {
               <option value="ar">AR</option>
               <option value="en">EN</option>
               <option value="both">AR + EN</option>
+            </select>
+          </div>
+          <div>
+            <label className="oc-label">Status</label>
+            <select
+              className="oc-input"
+              value={status}
+              onChange={(e) => setStatusFilter(e.target.value as FilterStatus)}
+            >
+              <option value="">Any</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
             </select>
           </div>
           <div style={{ alignSelf: 'end' }}>
