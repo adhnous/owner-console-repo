@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() {
+      return isSignedIn() && (
+        // Prefer custom claim on the ID token
+        (request.auth.token.role == 'admin') ||
+        // Optional: mirror role in users doc (best-effort)
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+
+    function isTimestamp(v) { return v is timestamp; }
+    function isString(v) { return v is string; }
+    function isNumber(v) { return v is int || v is float; }
+    function clampNonNegative(n) { return n >= 0; }
+
+    // Validate a service document
+    function validService(data) {
+      return
+        isString(data.title) && (3 <= size(data.title) && size(data.title) <= 120) &&
+        (!('category' in data) || isString(data.category)) &&
+        (data.priceType in ['firm','negotiable','hourly']) &&
+        (!('price' in data) || (isNumber(data.price) && clampNonNegative(data.price))) &&
+        isString(data.currency) && size(data.currency) >= 2 && size(data.currency) <= 8 &&
+        (!('description' in data) || (isString(data.description) && size(data.description) <= 5000)) &&
+        (!('photos' in data) || (data.photos is list && size(data.photos) <= 20)) &&
+        (!('location' in data) || (data.location == null || data.location is map)) &&
+        (data.status in ['draft','pending','approved','rejected','pending_review','published','paused','archived']) &&
+        isString(data.ownerId) && isString(data.ownerEmail) &&
+        // Mirror field used elsewhere in app
+        isString(data.providerId) && data.providerId == data.ownerId &&
+        isTimestamp(data.createdAt) && isTimestamp(data.updatedAt) &&
+        isString(data.createdBy) && isString(data.updatedBy);
+    }
+
+    // Immutable ownership fields (client cannot modify)
+    function ownershipUnchanged(before, after) {
+      return before.ownerId == after.ownerId &&
+             before.ownerEmail == after.ownerEmail &&
+             before.providerId == after.providerId &&
+             before.createdAt == after.createdAt &&
+             before.createdBy == after.createdBy;
+    }
+
+    match /services/{id} {
+      allow read: if true; // adjust to your policy
+
+      // Creation: admins only (optional: allow owners to self-create by uncommenting isOwner check)
+      allow create: if isAdmin() && validService(request.resource.data);
+      // || (isOwner(request.resource.data.ownerId) && validService(request.resource.data));
+
+      // Update/Delete: admin or owner; but ownership fields must not change unless admin
+      allow update: if (
+        isAdmin() ||
+        (isOwner(resource.data.ownerId) && ownershipUnchanged(resource.data, request.resource.data))
+      ) && validService(request.resource.data);
+
+      allow delete: if isAdmin() || isOwner(resource.data.ownerId);
+    }
+
+    // Audit events are append-only (server writes)
+    match /service_events/{eid} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(uid) || isAdmin();
+    }
+  }
+}
+
