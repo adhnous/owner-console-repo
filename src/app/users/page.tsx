@@ -26,6 +26,12 @@ export default function UsersOverridesPage() {
   const [hasMore, setHasMore] = useState<boolean>(false);
   const [linkLoading, setLinkLoading] = useState(false);
   const [verificationLink, setVerificationLink] = useState<string | null>(null);
+  const [createEmail, setCreateEmail] = useState("");
+  const [createPassword, setCreatePassword] = useState("");
+  const [createRole, setCreateRole] = useState<string>("provider");
+  const [createStatus, setCreateStatus] = useState<'active' | 'disabled'>('active');
+  const [createPlan, setCreatePlan] = useState<string>("free");
+  const [creating, setCreating] = useState(false);
 
   async function search() {
     setLoading(true); setError(null); setUser(null);
@@ -118,6 +124,61 @@ export default function UsersOverridesPage() {
       alert('Email verification updated');
     } catch (e: any) {
       setError(e?.message || 'Update email verification failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createUser() {
+    if (!createEmail || !createPassword) return;
+    setCreating(true); setError(null);
+    try {
+      const token = await getIdTokenOrThrow();
+      const res = await fetch('/api/users/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          email: createEmail,
+          password: createPassword,
+          role: createRole,
+          status: createStatus,
+          plan: createPlan,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      alert('User created');
+      setCreatePassword("");
+      setNextCursor(null);
+      setHasMore(false);
+      await loadUsers('reset');
+    } catch (e: any) {
+      setError(e?.message || 'Create user failed');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function deleteUser(uidToDelete: string) {
+    if (!uidToDelete) return;
+    if (!confirm('Are you sure you want to disable/delete this user?')) return;
+    setSaving(true); setError(null);
+    try {
+      const token = await getIdTokenOrThrow();
+      const res = await fetch('/api/users/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ uid: uidToDelete }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      setUsersList(prev => prev.filter(u => u.uid !== uidToDelete));
+      if (user?.uid === uidToDelete) {
+        setUser(null);
+      }
+      alert('User deleted/disabled');
+    } catch (e: any) {
+      setError(e?.message || 'Delete user failed');
     } finally {
       setSaving(false);
     }
@@ -252,6 +313,7 @@ export default function UsersOverridesPage() {
                 <th>Verified</th>
                 <th>UID</th>
                 <th>Created</th>
+                <th style={{ width: 120 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -264,11 +326,31 @@ export default function UsersOverridesPage() {
                   <td>{u.emailVerified == null ? '-' : (u.emailVerified ? 'yes' : 'no')}</td>
                   <td className="oc-ellips" style={{ maxWidth: 240 }}>{u.uid}</td>
                   <td>{u.createdAt || '-'}</td>
+                  <td>
+                    <div className="oc-actions" style={{ gap: 6 }}>
+                      <button
+                        className="oc-btn oc-btn-sm"
+                        onClick={() => {
+                          setEmail(u.email || '');
+                          setUid(u.uid);
+                          search();
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="oc-btn oc-btn-sm oc-btn-red"
+                        onClick={() => deleteUser(u.uid)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {(!usersList || usersList.length === 0) && (
                 <tr>
-                  <td colSpan={7} className="oc-subtle">{listLoading ? 'Loading…' : 'No users loaded yet.'}</td>
+                  <td colSpan={8} className="oc-subtle">{listLoading ? 'Loading…' : 'No users loaded yet.'}</td>
                 </tr>
               )}
             </tbody>
@@ -292,6 +374,45 @@ export default function UsersOverridesPage() {
           </div>
           <div style={{ alignSelf: 'end' }}>
             <button className="oc-btn oc-btn-primary" onClick={search} disabled={loading}>Search</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="oc-card">
+        <h3 className="oc-title" style={{ marginBottom: 8 }}>Create user</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr auto', gap: 12 }}>
+          <div>
+            <label className="oc-label">Email</label>
+            <input className="oc-input" type="email" value={createEmail} onChange={(e) => setCreateEmail(e.target.value)} placeholder="user@example.com" />
+          </div>
+          <div>
+            <label className="oc-label">Password</label>
+            <input className="oc-input" type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} placeholder="min 6 characters" />
+          </div>
+          <div>
+            <label className="oc-label">Role</label>
+            <select className="oc-input" value={createRole} onChange={(e) => setCreateRole(e.target.value)}>
+              <option value="provider">provider</option>
+              <option value="seeker">seeker</option>
+              <option value="owner">owner</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+          <div>
+            <label className="oc-label">Status</label>
+            <select className="oc-input" value={createStatus} onChange={(e) => setCreateStatus(e.target.value as any)}>
+              <option value="active">active</option>
+              <option value="disabled">disabled</option>
+            </select>
+          </div>
+          <div>
+            <label className="oc-label">Plan</label>
+            <input className="oc-input" value={createPlan} onChange={(e) => setCreatePlan(e.target.value)} placeholder="free / pro / ..." />
+          </div>
+          <div style={{ alignSelf: 'end' }}>
+            <button className="oc-btn oc-btn-primary" onClick={createUser} disabled={creating || !createEmail || !createPassword}>
+              {creating ? 'Creating…' : 'Create user'}
+            </button>
           </div>
         </div>
       </div>
