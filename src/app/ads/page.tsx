@@ -187,8 +187,9 @@ export default function AdsManagerPage() {
       ) : rows.length === 0 ? (
         <div className="oc-card">No ads.</div>
       ) : (
-        <div className="oc-table-wrap">
-          <table className="oc-table">
+        <div className="oc-card">
+          <div className="oc-table-wrap">
+            <table className="oc-table">
             <thead>
               <tr>
                 <th style={{ minWidth: 220 }}>Text (EN)</th>
@@ -270,7 +271,8 @@ export default function AdsManagerPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
       )}
     </div>

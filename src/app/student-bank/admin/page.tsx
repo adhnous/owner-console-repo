@@ -15,6 +15,7 @@ type Row = {
   driveLink?: string | null;
   uploaderId?: string | null;
   createdAt: string | null;
+  status?: 'pending' | 'approved' | 'rejected' | null;
 };
 
 type FilterType = '' | 'exam' | 'assignment' | 'notes' | 'report' | 'book' | 'other';
@@ -130,6 +131,28 @@ export default function StudentBankAdminPage() {
     }
   }
 
+  async function setStatus(r: Row, status: 'pending' | 'approved' | 'rejected') {
+    setSavingId(r.id);
+    try {
+      const token = await getIdTokenOrThrow();
+      const res = await fetch('/api/student-bank/admin/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: r.id, status }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      await load();
+    } catch (e: any) {
+      alert(e?.message || 'Status update failed');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   return (
     <div className="oc-grid">
       <div className="oc-toolbar">
@@ -213,6 +236,7 @@ export default function StudentBankAdminPage() {
               <tr>
                 <th>Title</th>
                 <th>University / Course</th>
+                <th>Status</th>
                 <th>Type</th>
                 <th>Lang</th>
                 <th>File</th>
@@ -228,6 +252,22 @@ export default function StudentBankAdminPage() {
                     <div className="oc-subtle text-xs">
                       ID: <span className="font-mono text-[10px]">{r.id}</span>
                     </div>
+                  </td>
+                  <td>
+                    <span
+                      className="oc-subtle text-xs"
+                      style={{
+                        fontWeight: 600,
+                        color:
+                          r.status === 'approved'
+                            ? '#166534'
+                            : r.status === 'rejected'
+                            ? '#991b1b'
+                            : '#92400e',
+                      }}
+                    >
+                      {r.status || 'pending'}
+                    </span>
                   </td>
                   <td>
                     <div>{r.university || '-'}</div>
@@ -257,6 +297,15 @@ export default function StudentBankAdminPage() {
                   </td>
                   <td>
                     <div className="flex gap-2">
+                      {r.status !== 'approved' && (
+                        <button
+                          className="oc-btn oc-btn-sm"
+                          onClick={() => setStatus(r, 'approved')}
+                          disabled={savingId === r.id}
+                        >
+                          Approve
+                        </button>
+                      )}
                       <button
                         className="oc-btn oc-btn-sm"
                         onClick={() => editRow(r)}
@@ -282,4 +331,3 @@ export default function StudentBankAdminPage() {
     </div>
   );
 }
-

@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 
 const ALLOWED_TYPES = ['exam', 'assignment', 'notes', 'report', 'book', 'other'];
 const ALLOWED_LANGUAGES = ['ar', 'en', 'both'];
+const ALLOWED_STATUS = ['pending', 'approved', 'rejected'];
 
 export async function POST(req: Request) {
   const authz = await requireOwnerOrAdmin(req);
@@ -57,6 +58,12 @@ export async function POST(req: Request) {
       partial.language = lng;
     }
   }
+  if (body.status !== undefined) {
+    const s = String(body.status || '').trim().toLowerCase();
+    if (ALLOWED_STATUS.includes(s)) {
+      partial.status = s;
+    }
+  }
 
   const clean = Object.fromEntries(
     Object.entries(partial).filter(
@@ -77,4 +84,3 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true });
 }
-

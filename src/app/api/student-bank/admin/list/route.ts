@@ -45,6 +45,7 @@ export async function GET(req: Request) {
       course: data.course || '',
       year: data.year || '',
       type: data.type || 'other',
+      status: data.status || null,
       language: data.language || null,
       hasFile: !!(driveLink || data.driveFileId),
       driveLink,
@@ -68,4 +69,3 @@ export async function GET(req: Request) {
 
   return NextResponse.json({ rows });
 }
-

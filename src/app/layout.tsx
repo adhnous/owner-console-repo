@@ -20,9 +20,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
           {/* Main */}
           <main className="flex-1">
-            <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-              <AuthBar />
-              <OwnerGate>{children}</OwnerGate>
+            <div className="oc-container" style={{ paddingTop: 24, paddingBottom: 24 }}>
+              <div className="space-y-6">
+                <AuthBar />
+                <OwnerGate>{children}</OwnerGate>
+              </div>
             </div>
           </main>
         </div>
