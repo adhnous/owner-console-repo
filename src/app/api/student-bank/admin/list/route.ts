@@ -49,6 +49,7 @@ export async function GET(req: Request) {
       type: data.type || 'other',
       status: data.status || null,
       language: data.language || null,
+      subjectTags: Array.isArray(data.subjectTags) ? data.subjectTags : [],
       hasFile: !!(driveLink || data.driveFileId),
       driveLink,
       uploaderId: data.uploaderId || null,

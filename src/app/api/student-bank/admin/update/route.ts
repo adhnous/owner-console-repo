@@ -58,6 +58,20 @@ export async function POST(req: Request) {
       partial.language = lng;
     }
   }
+  if (body.subjectTags !== undefined) {
+    if (Array.isArray(body.subjectTags)) {
+      const tags = body.subjectTags
+        .map((t: any) => String(t || '').trim())
+        .filter(Boolean);
+      partial.subjectTags = tags;
+    } else if (typeof body.subjectTags === 'string') {
+      const tags = String(body.subjectTags || '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+      partial.subjectTags = tags;
+    }
+  }
   if (body.status !== undefined) {
     const s = String(body.status || '').trim().toLowerCase();
     if (ALLOWED_STATUS.includes(s)) {

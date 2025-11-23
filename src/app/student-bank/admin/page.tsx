@@ -11,6 +11,7 @@ type Row = {
   year: string;
   type: string;
   language: string | null;
+  subjectTags?: string[];
   hasFile: boolean;
   driveLink?: string | null;
   uploaderId?: string | null;
@@ -33,6 +34,14 @@ export default function StudentBankAdminPage() {
   const [status, setStatusFilter] = useState<FilterStatus>('');
 
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Row | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editUniversity, setEditUniversity] = useState('');
+  const [editCourse, setEditCourse] = useState('');
+  const [editYear, setEditYear] = useState('');
+  const [editType, setEditType] = useState<FilterType>('');
+  const [editLanguage, setEditLanguage] = useState<FilterLanguage>('');
+  const [editTags, setEditTags] = useState('');
 
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
@@ -68,31 +77,37 @@ export default function StudentBankAdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryString]);
 
-  async function editRow(r: Row) {
-    const title = window.prompt('Title', r.title) ?? r.title;
-    const university = window.prompt('University', r.university || '') ?? r.university;
-    const course = window.prompt('Course / subject', r.course || '') ?? r.course;
-    const year = window.prompt('Year / term', r.year || '') ?? r.year;
-    const type = (window.prompt(
-      'Type (exam, assignment, notes, report, book, other)',
-      r.type,
-    ) || r.type) as FilterType;
-    const language = (window.prompt('Language (ar, en, both)', r.language || '') ||
-      r.language ||
-      '') as FilterLanguage;
+  function startEdit(r: Row) {
+    setEditing(r);
+    setEditTitle(r.title || '');
+    setEditUniversity(r.university || '');
+    setEditCourse(r.course || '');
+    setEditYear(r.year || '');
+    setEditType((r.type as FilterType) || '');
+    setEditLanguage((r.language as FilterLanguage) || '');
+    setEditTags((r.subjectTags || []).join(', '));
+  }
 
-    setSavingId(r.id);
+  async function saveEdit() {
+    if (!editing) return;
+    setSavingId(editing.id);
     try {
       const token = await getIdTokenOrThrow();
       const payload: any = {
-        id: r.id,
-        title,
-        university,
-        course,
-        year,
-        type,
-        language: language || undefined,
+        id: editing.id,
+        title: editTitle,
+        university: editUniversity,
+        course: editCourse,
+        year: editYear,
+        type: editType || editing.type,
+        language: editLanguage || undefined,
       };
+      if (editTags.trim()) {
+        payload.subjectTags = editTags
+          .split(',')
+          .map((t: string) => t.trim())
+          .filter(Boolean);
+      }
       const res = await fetch('/api/student-bank/admin/update', {
         method: 'POST',
         headers: {
@@ -104,6 +119,7 @@ export default function StudentBankAdminPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || res.statusText);
       await load();
+      setEditing(null);
     } catch (e: any) {
       alert(e?.message || 'Update failed');
     } finally {
@@ -164,6 +180,111 @@ export default function StudentBankAdminPage() {
           Reload
         </button>
       </div>
+
+      {editing && (
+        <div className="oc-card" style={{ marginBottom: 12 }}>
+          <h3 className="oc-title" style={{ marginBottom: 8 }}>
+            Edit resource
+          </h3>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '2fr 2fr 1fr 1fr',
+              gap: 12,
+              alignItems: 'center',
+              marginBottom: 12,
+            }}
+          >
+            <div>
+              <label className="oc-label">Title</label>
+              <input
+                className="oc-input"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="oc-label">University</label>
+              <input
+                className="oc-input"
+                value={editUniversity}
+                onChange={(e) => setEditUniversity(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="oc-label">Course / subject</label>
+              <input
+                className="oc-input"
+                value={editCourse}
+                onChange={(e) => setEditCourse(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="oc-label">Year / term</label>
+              <input
+                className="oc-input"
+                value={editYear}
+                onChange={(e) => setEditYear(e.target.value)}
+              />
+            </div>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 12,
+              alignItems: 'center',
+            }}
+          >
+            <div>
+              <label className="oc-label">Type</label>
+              <select
+                className="oc-input"
+                value={editType}
+                onChange={(e) => setEditType(e.target.value as FilterType)}
+              >
+                <option value="">(unchanged)</option>
+                <option value="exam">Exam</option>
+                <option value="assignment">Assignment</option>
+                <option value="notes">Notes</option>
+                <option value="report">Report</option>
+                <option value="book">Book</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="oc-label">Language</label>
+              <select
+                className="oc-input"
+                value={editLanguage}
+                onChange={(e) => setEditLanguage(e.target.value as FilterLanguage)}
+              >
+                <option value="">(unchanged)</option>
+                <option value="ar">AR</option>
+                <option value="en">EN</option>
+                <option value="both">AR + EN</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label className="oc-label">Subject tags (comma separated)</label>
+            <input
+              className="oc-input"
+              value={editTags}
+              onChange={(e) => setEditTags(e.target.value)}
+              placeholder="books, science, math"
+            />
+          </div>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button className="oc-btn oc-btn-sm" onClick={() => setEditing(null)} disabled={savingId === editing.id}>
+              Cancel
+            </button>
+            <button className="oc-btn oc-btn-sm" onClick={saveEdit} disabled={savingId === editing.id}>
+              Save changes
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="oc-card" style={{ marginBottom: 12 }}>
         <h3 className="oc-title" style={{ marginBottom: 8 }}>
@@ -324,7 +445,7 @@ export default function StudentBankAdminPage() {
                       )}
                       <button
                         className="oc-btn oc-btn-sm"
-                        onClick={() => editRow(r)}
+                        onClick={() => startEdit(r)}
                         disabled={savingId === r.id}
                       >
                         Edit
