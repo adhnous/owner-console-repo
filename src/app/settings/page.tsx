@@ -72,6 +72,12 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
+  // Student Bank uploads toggle (shared with main app)
+  const [studentBankUploadsEnabled, setStudentBankUploadsEnabled] = useState<boolean | null>(null);
+  const [studentBankLoading, setStudentBankLoading] = useState(false);
+  const [studentBankSaving, setStudentBankSaving] = useState(false);
+  const [studentBankError, setStudentBankError] = useState<string | null>(null);
+
   // Feature state
   const [pricingEnabled, setPricingEnabled] = useState<boolean>(true);
   const [showForProviders, setShowForProviders] = useState<boolean>(false);
@@ -86,6 +92,53 @@ export default function SettingsPage() {
 
   // Abortable load
   const abortRef = useRef<AbortController | null>(null);
+
+  async function loadStudentBankSettings() {
+    setStudentBankLoading(true);
+    setStudentBankError(null);
+    try {
+      const token = await getIdTokenOrThrow();
+      const res = await fetch("/api/student-bank/admin/settings", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const json: any = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      setStudentBankUploadsEnabled(
+        typeof json.uploadsEnabled === "boolean" ? json.uploadsEnabled : true,
+      );
+    } catch (e: any) {
+      setStudentBankUploadsEnabled(null);
+      setStudentBankError(e?.message || "Failed to load Student Bank settings");
+    } finally {
+      setStudentBankLoading(false);
+    }
+  }
+
+  async function saveStudentBankUploadsEnabled(next: boolean) {
+    setStudentBankSaving(true);
+    setStudentBankError(null);
+    setOkMsg(null);
+    try {
+      const token = await getIdTokenOrThrow();
+      const res = await fetch("/api/student-bank/admin/settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ uploadsEnabled: next }),
+      });
+      const json: any = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      setStudentBankUploadsEnabled(next);
+      setOkMsg("Student Bank settings saved.");
+    } catch (e: any) {
+      setStudentBankError(e?.message || "Failed to save Student Bank settings");
+    } finally {
+      setStudentBankSaving(false);
+    }
+  }
 
   const applyFeatures = (f: Partial<Features>) => {
     if (f.pricingEnabled !== undefined)
@@ -158,6 +211,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     load();
+    loadStudentBankSettings();
     return () => abortRef.current?.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -429,6 +483,63 @@ export default function SettingsPage() {
               checked={showCityViews}
               onChange={(e) => setShowCityViews(e.target.checked)}
             />
+          </div>
+        </div>
+      </div>
+
+      {/* Student Bank */}
+      <div className="oc-card">
+        <h3 className="oc-title" style={{ marginBottom: 8 }}>
+          Student Bank
+        </h3>
+        {studentBankError && (
+          <div
+            className="oc-card"
+            style={{
+              borderColor: "#fecaca",
+              background: "#fef2f2",
+              color: "#991b1b",
+              marginBottom: 12,
+            }}
+          >
+            {studentBankError}
+          </div>
+        )}
+        <div className="oc-filter-grid cols-4">
+          <div className="oc-field">
+            <label className="oc-label">Enable student uploads</label>
+            <input
+              type="checkbox"
+              className="oc-switch"
+              checked={studentBankUploadsEnabled === true}
+              onChange={(e) => saveStudentBankUploadsEnabled(e.target.checked)}
+              disabled={
+                studentBankUploadsEnabled === null ||
+                studentBankLoading ||
+                studentBankSaving
+              }
+            />
+          </div>
+          <div className="oc-field">
+            <label className="oc-label">Status</label>
+            <div className="oc-subtle">
+              {studentBankLoading
+                ? "Loading..."
+                : studentBankUploadsEnabled === null
+                  ? "Unknown"
+                  : studentBankUploadsEnabled
+                    ? "Enabled"
+                    : "Disabled"}
+            </div>
+          </div>
+          <div className="oc-field" style={{ alignSelf: "end" }}>
+            <button
+              className="oc-btn"
+              onClick={loadStudentBankSettings}
+              disabled={studentBankLoading || studentBankSaving || loading || saving}
+            >
+              Reload Student Bank
+            </button>
           </div>
         </div>
       </div>

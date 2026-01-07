@@ -5,7 +5,7 @@ import { getAdmin } from '@/lib/firebase-admin';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// GET /api/student-bank/admin/list?q=&type=&language=&limit=
+// GET /api/student-bank/admin/list?q=&type=&language=&limit=&includeHidden=1
 export async function GET(req: Request) {
   const authz = await requireOwnerOrAdmin(req);
   if (!authz.ok) {
@@ -16,6 +16,7 @@ export async function GET(req: Request) {
   const q = (url.searchParams.get('q') || '').trim().toLowerCase();
   const type = (url.searchParams.get('type') || '').trim();
   const language = (url.searchParams.get('language') || '').trim();
+  const includeHidden = url.searchParams.get('includeHidden') === '1';
   const limit = Math.min(
     Math.max(parseInt(url.searchParams.get('limit') || '200', 10) || 200, 1),
     500,
@@ -37,6 +38,8 @@ export async function GET(req: Request) {
       : null;
 
     const driveLink = data.driveLink || data.fileUrl || null;
+    const pdfKey = data.pdfKey || null;
+    const hiddenFromOwner = !!data.hiddenFromOwner;
 
     return {
       id: d.id,
@@ -46,12 +49,20 @@ export async function GET(req: Request) {
       year: data.year || '',
       type: data.type || 'other',
       language: data.language || null,
-      hasFile: !!(driveLink || data.driveFileId),
+      status: data.status || null,
+      hiddenFromOwner,
+      hasFile: !!(pdfKey || driveLink || data.driveFileId),
+      fileSource: pdfKey ? 's3' : driveLink || data.driveFileId ? 'drive' : null,
       driveLink,
+      pdfKey,
       uploaderId: data.uploaderId || null,
       createdAt: createdAtISO,
     } as const;
   });
+
+  if (!includeHidden) {
+    rows = rows.filter((r: any) => !r.hiddenFromOwner);
+  }
 
   if (q) {
     rows = rows.filter((r: any) => {
@@ -68,4 +79,3 @@ export async function GET(req: Request) {
 
   return NextResponse.json({ rows });
 }
-

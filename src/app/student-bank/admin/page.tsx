@@ -12,7 +12,11 @@ type Row = {
   type: string;
   language: string | null;
   hasFile: boolean;
+  fileSource: 's3' | 'drive' | null;
   driveLink?: string | null;
+  pdfKey?: string | null;
+  status?: 'pending' | 'approved' | 'rejected' | null;
+  hiddenFromOwner?: boolean;
   uploaderId?: string | null;
   createdAt: string | null;
 };
@@ -28,6 +32,10 @@ export default function StudentBankAdminPage() {
   const [q, setQ] = useState('');
   const [type, setType] = useState<FilterType>('');
   const [language, setLanguage] = useState<FilterLanguage>('');
+  const [includeHidden, setIncludeHidden] = useState(true);
+
+  const [uploadsEnabled, setUploadsEnabled] = useState<boolean | null>(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
 
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -36,9 +44,25 @@ export default function StudentBankAdminPage() {
     if (q) p.set('q', q.trim());
     if (type) p.set('type', type);
     if (language) p.set('language', language);
+    if (includeHidden) p.set('includeHidden', '1');
     p.set('limit', '200');
     return p.toString();
-  }, [q, type, language]);
+  }, [q, type, language, includeHidden]);
+
+  async function loadSettings() {
+    try {
+      const token = await getIdTokenOrThrow();
+      const res = await fetch('/api/student-bank/admin/settings', {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      setUploadsEnabled(typeof json.uploadsEnabled === 'boolean' ? json.uploadsEnabled : true);
+    } catch (e: any) {
+      setUploadsEnabled(null);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -60,9 +84,104 @@ export default function StudentBankAdminPage() {
   }
 
   useEffect(() => {
+    loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryString]);
+
+  async function saveUploadsEnabled(next: boolean) {
+    setSettingsSaving(true);
+    try {
+      const token = await getIdTokenOrThrow();
+      const res = await fetch('/api/student-bank/admin/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ uploadsEnabled: next }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      setUploadsEnabled(next);
+    } catch (e: any) {
+      alert(e?.message || 'Failed to save uploadsEnabled');
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  async function setStatus(r: Row, status: 'pending' | 'approved' | 'rejected') {
+    setSavingId(r.id);
+    try {
+      const token = await getIdTokenOrThrow();
+      const res = await fetch('/api/student-bank/admin/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: r.id, status }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      await load();
+    } catch (e: any) {
+      alert(e?.message || 'Update failed');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function toggleHidden(r: Row) {
+    setSavingId(r.id);
+    try {
+      const token = await getIdTokenOrThrow();
+      const res = await fetch('/api/student-bank/admin/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: r.id, hiddenFromOwner: !r.hiddenFromOwner }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      await load();
+    } catch (e: any) {
+      alert(e?.message || 'Update failed');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function openFile(r: Row) {
+    if (!r.hasFile) return;
+    try {
+      if (r.fileSource === 'drive' && r.driveLink) {
+        window.open(r.driveLink, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      const token = await getIdTokenOrThrow();
+      const res = await fetch('/api/student-bank/admin/signed-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: r.id }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.url) throw new Error(json?.error || res.statusText);
+      window.open(String(json.url), '_blank', 'noopener,noreferrer');
+    } catch (e: any) {
+      alert(e?.message || 'Failed to open file');
+    }
+  }
 
   async function editRow(r: Row) {
     const title = window.prompt('Title', r.title) ?? r.title;
@@ -146,7 +265,7 @@ export default function StudentBankAdminPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '2fr 1fr 1fr auto',
+            gridTemplateColumns: '2fr 1fr 1fr 1fr auto',
             gap: 12,
             alignItems: 'center',
           }}
@@ -189,6 +308,17 @@ export default function StudentBankAdminPage() {
               <option value="both">AR + EN</option>
             </select>
           </div>
+          <div>
+            <label className="oc-label">Hidden</label>
+            <select
+              className="oc-input"
+              value={includeHidden ? '1' : '0'}
+              onChange={(e) => setIncludeHidden(e.target.value === '1')}
+            >
+              <option value="1">Include hidden</option>
+              <option value="0">Exclude hidden</option>
+            </select>
+          </div>
           <div style={{ alignSelf: 'end' }}>
             <button className="oc-btn" onClick={load} disabled={loading}>
               Apply
@@ -198,6 +328,18 @@ export default function StudentBankAdminPage() {
       </div>
 
       <div className="oc-card">
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+          <div className="oc-subtle" style={{ minWidth: 220 }}>
+            Uploads: {uploadsEnabled === null ? 'Unknown' : uploadsEnabled ? 'Enabled' : 'Disabled'}
+          </div>
+          <button
+            className="oc-btn oc-btn-sm"
+            disabled={settingsSaving || uploadsEnabled === null}
+            onClick={() => uploadsEnabled !== null && saveUploadsEnabled(!uploadsEnabled)}
+          >
+            {uploadsEnabled ? 'Disable uploads' : 'Enable uploads'}
+          </button>
+        </div>
         {error && (
           <div className="oc-error" style={{ marginBottom: 8 }}>
             {error}
@@ -215,6 +357,8 @@ export default function StudentBankAdminPage() {
                 <th>University / Course</th>
                 <th>Type</th>
                 <th>Lang</th>
+                <th>Status</th>
+                <th>Hidden</th>
                 <th>File</th>
                 <th>Created</th>
                 <th>Actions</th>
@@ -238,16 +382,13 @@ export default function StudentBankAdminPage() {
                   </td>
                   <td>{r.type || '-'}</td>
                   <td>{r.language || '-'}</td>
+                  <td>{r.status || '-'}</td>
+                  <td>{r.hiddenFromOwner ? 'Yes' : 'No'}</td>
                   <td>
-                    {r.hasFile && r.driveLink ? (
-                      <a
-                        href={r.driveLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="oc-link"
-                      >
-                        Open
-                      </a>
+                    {r.hasFile ? (
+                      <button className="oc-link" onClick={() => openFile(r)}>
+                        Open {r.fileSource === 's3' ? '(S3)' : r.fileSource === 'drive' ? '(Drive)' : ''}
+                      </button>
                     ) : (
                       <span className="oc-subtle text-xs">No file</span>
                     )}
@@ -263,6 +404,27 @@ export default function StudentBankAdminPage() {
                         disabled={savingId === r.id}
                       >
                         Edit
+                      </button>
+                      <button
+                        className="oc-btn oc-btn-sm"
+                        onClick={() => setStatus(r, 'approved')}
+                        disabled={savingId === r.id || r.status === 'approved'}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        className="oc-btn oc-btn-sm"
+                        onClick={() => setStatus(r, 'rejected')}
+                        disabled={savingId === r.id || r.status === 'rejected'}
+                      >
+                        Reject
+                      </button>
+                      <button
+                        className="oc-btn oc-btn-sm"
+                        onClick={() => toggleHidden(r)}
+                        disabled={savingId === r.id}
+                      >
+                        {r.hiddenFromOwner ? 'Unhide' : 'Hide'}
                       </button>
                       <button
                         className="oc-btn oc-btn-sm oc-btn-red"
@@ -282,4 +444,3 @@ export default function StudentBankAdminPage() {
     </div>
   );
 }
-

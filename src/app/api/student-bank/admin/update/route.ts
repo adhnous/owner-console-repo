@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 
 const ALLOWED_TYPES = ['exam', 'assignment', 'notes', 'report', 'book', 'other'];
 const ALLOWED_LANGUAGES = ['ar', 'en', 'both'];
+const ALLOWED_STATUSES = ['pending', 'approved', 'rejected'] as const;
 
 export async function POST(req: Request) {
   const authz = await requireOwnerOrAdmin(req);
@@ -58,10 +59,41 @@ export async function POST(req: Request) {
     }
   }
 
+  if (body.hiddenFromOwner !== undefined) {
+    partial.hiddenFromOwner = !!body.hiddenFromOwner;
+  }
+
+  if (body.status !== undefined) {
+    const s = String(body.status || '').trim().toLowerCase();
+    if ((ALLOWED_STATUSES as readonly string[]).includes(s)) {
+      partial.status = s;
+      if (s === 'approved') {
+        partial.approvedAt =
+          typeof FieldValue?.serverTimestamp === 'function'
+            ? FieldValue.serverTimestamp()
+            : new Date();
+        partial.approvedBy = authz.uid;
+        partial.rejectedAt = null;
+        partial.rejectedBy = null;
+      } else if (s === 'rejected') {
+        partial.rejectedAt =
+          typeof FieldValue?.serverTimestamp === 'function'
+            ? FieldValue.serverTimestamp()
+            : new Date();
+        partial.rejectedBy = authz.uid;
+        partial.approvedAt = null;
+        partial.approvedBy = null;
+      } else {
+        partial.approvedAt = null;
+        partial.approvedBy = null;
+        partial.rejectedAt = null;
+        partial.rejectedBy = null;
+      }
+    }
+  }
+
   const clean = Object.fromEntries(
-    Object.entries(partial).filter(
-      ([, v]) => v !== undefined && v !== null && String(v || '').length > 0,
-    ),
+    Object.entries(partial).filter(([, v]) => v !== undefined),
   );
 
   if (!Object.keys(clean).length) {
@@ -77,4 +109,3 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true });
 }
-
