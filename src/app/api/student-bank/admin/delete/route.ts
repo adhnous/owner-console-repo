@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireOwnerOrAdmin } from '@/lib/admin-auth';
 import { getAdmin } from '@/lib/firebase-admin';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, DeleteObjectsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getS3Client, getStudentResourcesBucket, isS3Configured } from '@/lib/s3';
 
 export const runtime = 'nodejs';
@@ -41,12 +41,39 @@ export async function POST(req: Request) {
     if (cfg.ok) {
       try {
         const s3 = getS3Client();
-        await s3.send(
-          new DeleteObjectCommand({
-            Bucket: getStudentResourcesBucket(),
-            Key: pdfKey,
-          }),
-        );
+        const bucket = getStudentResourcesBucket();
+
+        // Best-effort: delete *all* objects under the resource folder prefix (covers future derived files).
+        const prefix = `${pdfKey.split('/').slice(0, -1).join('/')}/`;
+        let token: string | undefined;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const listed = await s3.send(
+            new ListObjectsV2Command({
+              Bucket: bucket,
+              Prefix: prefix,
+              ContinuationToken: token,
+              MaxKeys: 1000,
+            }),
+          );
+
+          const keys = (listed.Contents || []).map((o) => o.Key).filter(Boolean) as string[];
+          if (keys.length) {
+            await s3.send(
+              new DeleteObjectsCommand({
+                Bucket: bucket,
+                Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+              }),
+            );
+          }
+
+          if (!listed.IsTruncated) break;
+          token = listed.NextContinuationToken;
+          if (!token) break;
+        }
+
+        // Fallback: ensure the exact key is deleted even if the prefix listing fails to include it.
+        await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: pdfKey }));
       } catch (e) {
         console.error('Failed to delete MinIO object for student resource', { id, pdfKey, e });
       }
