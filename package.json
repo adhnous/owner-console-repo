@@ -9,8 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit",
-    "postinstall": "npx --yes lightningcss-cli --version || npm rebuild lightningcss"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.535.0",
@@ -23,7 +22,6 @@
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.10",
-    "@tailwindcss/postcss": "^4.1.17",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
