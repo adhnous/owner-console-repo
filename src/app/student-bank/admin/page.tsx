@@ -11,18 +11,19 @@ type Row = {
   year: string;
   type: string;
   language: string | null;
+  status: 'pending' | 'approved' | 'rejected' | null;
+  hiddenFromOwner: boolean;
   hasFile: boolean;
   fileSource: 's3' | 'drive' | null;
   driveLink?: string | null;
   pdfKey?: string | null;
-  status?: 'pending' | 'approved' | 'rejected' | null;
-  hiddenFromOwner?: boolean;
   uploaderId?: string | null;
   createdAt: string | null;
 };
 
 type FilterType = '' | 'exam' | 'assignment' | 'notes' | 'report' | 'book' | 'other';
 type FilterLanguage = '' | 'ar' | 'en' | 'both';
+type FilterStatus = '' | 'pending' | 'approved' | 'rejected';
 
 export default function StudentBankAdminPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -32,6 +33,7 @@ export default function StudentBankAdminPage() {
   const [q, setQ] = useState('');
   const [type, setType] = useState<FilterType>('');
   const [language, setLanguage] = useState<FilterLanguage>('');
+  const [status, setStatusFilter] = useState<FilterStatus>('');
   const [includeHidden, setIncludeHidden] = useState(true);
 
   const [uploadsEnabled, setUploadsEnabled] = useState<boolean | null>(null);
@@ -44,10 +46,11 @@ export default function StudentBankAdminPage() {
     if (q) p.set('q', q.trim());
     if (type) p.set('type', type);
     if (language) p.set('language', language);
+    if (status) p.set('status', status);
     if (includeHidden) p.set('includeHidden', '1');
     p.set('limit', '200');
     return p.toString();
-  }, [q, type, language, includeHidden]);
+  }, [q, type, language, status, includeHidden]);
 
   async function loadSettings() {
     try {
@@ -56,10 +59,10 @@ export default function StudentBankAdminPage() {
         headers: { Authorization: `Bearer ${token}` },
         cache: 'no-store',
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.error || res.statusText);
       setUploadsEnabled(typeof json.uploadsEnabled === 'boolean' ? json.uploadsEnabled : true);
-    } catch (e: any) {
+    } catch {
       setUploadsEnabled(null);
     }
   }
@@ -73,9 +76,9 @@ export default function StudentBankAdminPage() {
         headers: { Authorization: `Bearer ${token}` },
         cache: 'no-store',
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.error || res.statusText);
-      setRows(json.rows || []);
+      setRows(Array.isArray(json.rows) ? json.rows : []);
     } catch (e: any) {
       setError(e?.message || 'Failed to load student resources');
     } finally {
@@ -105,81 +108,13 @@ export default function StudentBankAdminPage() {
         },
         body: JSON.stringify({ uploadsEnabled: next }),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.error || res.statusText);
       setUploadsEnabled(next);
     } catch (e: any) {
       alert(e?.message || 'Failed to save uploadsEnabled');
     } finally {
       setSettingsSaving(false);
-    }
-  }
-
-  async function setStatus(r: Row, status: 'pending' | 'approved' | 'rejected') {
-    setSavingId(r.id);
-    try {
-      const token = await getIdTokenOrThrow();
-      const res = await fetch('/api/student-bank/admin/update', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ id: r.id, status }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || res.statusText);
-      await load();
-    } catch (e: any) {
-      alert(e?.message || 'Update failed');
-    } finally {
-      setSavingId(null);
-    }
-  }
-
-  async function toggleHidden(r: Row) {
-    setSavingId(r.id);
-    try {
-      const token = await getIdTokenOrThrow();
-      const res = await fetch('/api/student-bank/admin/update', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ id: r.id, hiddenFromOwner: !r.hiddenFromOwner }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || res.statusText);
-      await load();
-    } catch (e: any) {
-      alert(e?.message || 'Update failed');
-    } finally {
-      setSavingId(null);
-    }
-  }
-
-  async function openFile(r: Row) {
-    if (!r.hasFile) return;
-    try {
-      if (r.fileSource === 'drive' && r.driveLink) {
-        window.open(r.driveLink, '_blank', 'noopener,noreferrer');
-        return;
-      }
-      const token = await getIdTokenOrThrow();
-      const res = await fetch('/api/student-bank/admin/signed-url', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ id: r.id }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json?.url) throw new Error(json?.error || res.statusText);
-      window.open(String(json.url), '_blank', 'noopener,noreferrer');
-    } catch (e: any) {
-      alert(e?.message || 'Failed to open file');
     }
   }
 
@@ -216,13 +151,81 @@ export default function StudentBankAdminPage() {
         },
         body: JSON.stringify(payload),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.error || res.statusText);
       await load();
     } catch (e: any) {
       alert(e?.message || 'Update failed');
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function setRowStatus(r: Row, status: 'pending' | 'approved' | 'rejected') {
+    setSavingId(r.id);
+    try {
+      const token = await getIdTokenOrThrow();
+      const res = await fetch('/api/student-bank/admin/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: r.id, status }),
+      });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      await load();
+    } catch (e: any) {
+      alert(e?.message || 'Update failed');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function toggleHidden(r: Row) {
+    setSavingId(r.id);
+    try {
+      const token = await getIdTokenOrThrow();
+      const res = await fetch('/api/student-bank/admin/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: r.id, hiddenFromOwner: !r.hiddenFromOwner }),
+      });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      await load();
+    } catch (e: any) {
+      alert(e?.message || 'Update failed');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function openFile(r: Row) {
+    if (!r.hasFile) return;
+    try {
+      if (r.fileSource === 'drive' && r.driveLink) {
+        window.open(r.driveLink, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      const token = await getIdTokenOrThrow();
+      const res = await fetch('/api/student-bank/admin/signed-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: r.id }),
+      });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok || !json?.url) throw new Error(json?.error || res.statusText);
+      window.open(String(json.url), '_blank', 'noopener,noreferrer');
+    } catch (e: any) {
+      alert(e?.message || 'Failed to open file');
     }
   }
 
@@ -239,7 +242,7 @@ export default function StudentBankAdminPage() {
         },
         body: JSON.stringify({ id: r.id }),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.error || res.statusText);
       setRows((prev) => prev.filter((x) => x.id !== r.id));
     } catch (e: any) {
@@ -265,7 +268,7 @@ export default function StudentBankAdminPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '2fr 1fr 1fr 1fr auto',
+            gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr auto',
             gap: 12,
             alignItems: 'center',
           }}
@@ -309,6 +312,19 @@ export default function StudentBankAdminPage() {
             </select>
           </div>
           <div>
+            <label className="oc-label">Status</label>
+            <select
+              className="oc-input"
+              value={status}
+              onChange={(e) => setStatusFilter(e.target.value as FilterStatus)}
+            >
+              <option value="">Any</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+          <div>
             <label className="oc-label">Hidden</label>
             <select
               className="oc-input"
@@ -340,6 +356,7 @@ export default function StudentBankAdminPage() {
             {uploadsEnabled ? 'Disable uploads' : 'Enable uploads'}
           </button>
         </div>
+
         {error && (
           <div className="oc-error" style={{ marginBottom: 8 }}>
             {error}
@@ -376,9 +393,7 @@ export default function StudentBankAdminPage() {
                   <td>
                     <div>{r.university || '-'}</div>
                     <div className="oc-subtle text-xs">{r.course || '-'}</div>
-                    {r.year && (
-                      <div className="oc-subtle text-xs">Year: {r.year}</div>
-                    )}
+                    {r.year && <div className="oc-subtle text-xs">Year: {r.year}</div>}
                   </td>
                   <td>{r.type || '-'}</td>
                   <td>{r.language || '-'}</td>
@@ -407,14 +422,14 @@ export default function StudentBankAdminPage() {
                       </button>
                       <button
                         className="oc-btn oc-btn-sm"
-                        onClick={() => setStatus(r, 'approved')}
+                        onClick={() => setRowStatus(r, 'approved')}
                         disabled={savingId === r.id || r.status === 'approved'}
                       >
                         Approve
                       </button>
                       <button
                         className="oc-btn oc-btn-sm"
-                        onClick={() => setStatus(r, 'rejected')}
+                        onClick={() => setRowStatus(r, 'rejected')}
                         disabled={savingId === r.id || r.status === 'rejected'}
                       >
                         Reject
@@ -444,3 +459,4 @@ export default function StudentBankAdminPage() {
     </div>
   );
 }
+

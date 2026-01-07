@@ -15,10 +15,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: authz.error }, { status: authz.code });
   }
 
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
+  const body = await req.json().catch(() => null as any);
+  if (!body) {
     return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
   }
 
@@ -56,6 +54,20 @@ export async function POST(req: Request) {
     const lng = String(body.language || '').trim().toLowerCase();
     if (ALLOWED_LANGUAGES.includes(lng)) {
       partial.language = lng;
+    }
+  }
+  if (body.subjectTags !== undefined) {
+    if (Array.isArray(body.subjectTags)) {
+      const tags = body.subjectTags
+        .map((t: any) => String(t || '').trim())
+        .filter(Boolean);
+      partial.subjectTags = tags;
+    } else if (typeof body.subjectTags === 'string') {
+      const tags = String(body.subjectTags || '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+      partial.subjectTags = tags;
     }
   }
 
@@ -106,6 +118,6 @@ export async function POST(req: Request) {
       : new Date();
 
   await db.collection('student_resources').doc(id).update(clean);
-
   return NextResponse.json({ ok: true });
 }
+

@@ -5,7 +5,7 @@ import { getAdmin } from '@/lib/firebase-admin';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// GET /api/student-bank/admin/list?q=&type=&language=&limit=&includeHidden=1
+// GET /api/student-bank/admin/list?q=&type=&language=&status=&limit=&includeHidden=1
 export async function GET(req: Request) {
   const authz = await requireOwnerOrAdmin(req);
   if (!authz.ok) {
@@ -16,6 +16,7 @@ export async function GET(req: Request) {
   const q = (url.searchParams.get('q') || '').trim().toLowerCase();
   const type = (url.searchParams.get('type') || '').trim();
   const language = (url.searchParams.get('language') || '').trim();
+  const status = (url.searchParams.get('status') || '').trim().toLowerCase();
   const includeHidden = url.searchParams.get('includeHidden') === '1';
   const limit = Math.min(
     Math.max(parseInt(url.searchParams.get('limit') || '200', 10) || 200, 1),
@@ -27,6 +28,7 @@ export async function GET(req: Request) {
   let queryRef: any = db.collection('student_resources');
   if (type) queryRef = queryRef.where('type', '==', type);
   if (language) queryRef = queryRef.where('language', '==', language);
+  if (status) queryRef = queryRef.where('status', '==', status);
   queryRef = queryRef.limit(limit);
 
   const snap = await queryRef.get();
@@ -79,3 +81,4 @@ export async function GET(req: Request) {
 
   return NextResponse.json({ rows });
 }
+
